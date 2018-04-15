@@ -2,7 +2,16 @@ let fetch = require('node-fetch')
 let FormData = require('form-data')
 let parse = require('xml-parser')
 let inspect = require('util').inspect
-const URLSearchParams = require('url').URLSearchParams
+let moment = require('moment-timezone')
+moment().tz('America/Los_Angeles').format()
+
+const Influx = require('influx')
+const influx = new Influx.InfluxDB({
+  hosts: [{host: 'dustboy.laris.co', port: 8086}],
+  username: 'nat',
+  password: 'nattan',
+  database: 'aqithaidb'
+})
 
 // or
 // const fetch = require('node-fetch');
@@ -17,62 +26,121 @@ const URLSearchParams = require('url').URLSearchParams
 
 // plain text or html
 let form = new FormData()
-form.append('action', 'showTable')
-form.append('stationId', '35t')
-form.append('reportType', 'Raw') //
-form.append('endDate', '2018-04-14')
-form.append('startDate', '2018-04-14')
-form.append('startYearMn', '2018')
-form.append('endYearMn', '2018') //
-form.append('startMonthMn', '04')
-form.append('endMonthMn', '04') //
-form.append('startTime', '00:00:00')
-form.append('endTime', '20:00:00') //
-form.append('dataReportType', '_h')
-form.append('paramValue', '')
-form.append('showNumRow', '500')
-form.append('pageNo', '1')
-form.append('paramValue', 'CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5')
 
 let params = {
   paramValue: 'CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5',
-  stationId: '36t',
+  stationId: '5t',
   action: 'showTable',
   reportType: 'Raw',
-  endDate: '2018-04-14',
-  startDate: '2018-04-14',
-  startYearMn: '2018',
-  endYearMn: '2018',
+  endDate: '2018-04-30',
+  startDate: '2017-01-15',
   startMonthMn: '04',
   endMonthMn: '04',
   startTime: '00:00:00',
-  endTime: '20:00:00',
+  endTime: '00:00:00',
   dataReportType: '_h',
-  showNumRow: '500',
+  startYearMn: '2018',
+  endYearMn: '2018',
+  showNumRow: '100000',
   pageNo: '1',
-
+  // action: showTable
+//   paramValue: (unable to decode value)
+// endDate: 2018-04-30
+// startDate: 2018-03-15
+// stationId: (unable to decode value)
+// reportType: Raw
+// startYearMn: 2018
+// startMonthMn: 04
+// endYearMn: 2018
+// endMonthMn: 04
+// startTime: 00:00:00
+// endTime: 21:31:00
+// dataReportType: _h
+// showNumRow: 500
+// pageNo: 1
 }
 
+Object.entries(params).forEach(([key, value]) => form.append(key, value))
+
 let f = `action=showTable&paramValue=${params.paramValue}%%&endDate=${params.endDate}&startDate=${params.startDate}`
-f += `&stationId=${params.stationId},%%&reportType=${params.reportType}&startYearMn=2018&startMonthMn=04&endYearMn=2018&endMonthMn=04&startTime=00:00:00&endTime=21:31:00&dataReportType=_h&showNumRow=500&pageNo=1&startDateTimeCurrPage=undefined&endDateTimeCurrPage=undefine`
+f += `&stationId=${params.stationId},%%&reportType=${params.reportType}&startYearMn=${params.startYearMn}`
+f += `&startMonthMn=${params.startMonthMn}&endYearMn=${params.endYearMn}&endMonthMn=${params.endMonthMn}`
+f += `&startTime=${params.startTime}&endTime=${params.endTime}&dataReportType=${params.dataReportType}`
+f += `&showNumRow=${params.showNumRow}&pageNo=${params.pageNo}`
 
 let headers = form.getHeaders()
-// let headers = {'Content-Type': 'application/x-www-form-urlencoded',}
+// headers = {'Content-Type': 'application/x-www-form-urlencoded',}
 // form = f
 
 fetch('http://aqmthai.com/includes/getMultiManReport.php', {
   method: 'POST', body: form, headers
 }).then(res => res.text())
   .then(body => {
-    console.log(body)
+    // console.log(body)
     const obj = parse(body)
     const trTags = obj.root.children[2].children
+    const trHeader = trTags.shift().children
+    // remove average fields
     console.log(`found ${trTags.length} rows`)
-    console.log(inspect(trTags, {colors: true, depth: Infinity}))
-    trTags.forEach((row, idx) => {
-      console.log(`${row.children[0].content}`)
+    // console.log(inspect(trTags, {colors: true, depth: Infinity}))
+    // console.log(getContent(trTags[0]).children)
+    const sensorTitle = trHeader.map(val => {
+      const [field1, field2] = val.content.split('_')
+      return (field2 || field1)
     })
-  })
 
-// curl --silent 'http://aqmthai.com/includes/getMultiManReport.php' --data '&startYearMn=2018&startMonthMn=04&endYearMn=2018&endMonthMn=04&startTime=00:00:00&endTime=20:00:00&dataReportType=_h&showNumRow=500&pageNo=1'  | html-beautify
-// curl 'http://aqmthai.com/includes/getMultiManReport.php' --data 'action=showTable&paramValue=CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5%%&endDate=2018-04-14&startDate=2018-04-14&stationId=35t,%%&reportType=Raw&startYearMn=2018&startMonthMn=04&endYearMn=2018&endMonthMn=04&startTime=00:00:00&endTime=21:31:00&dataReportType=_h&showNumRow=500&pageNo=1&startDateTimeCurrPage=undefined&endDateTimeCurrPage=undefined' --compressed
+    trTags.pop()
+    trTags.pop()
+    trTags.pop()
+    trTags.pop()
+    trTags.pop()
+
+    let rows = trTags.map((v) => {
+      let out = {}
+      v.children.forEach((v, idx) => {
+        let content = v.content
+        if (idx === 0) {
+          const fck = content.split(',').map(v => parseInt(v, 10))
+          fck [1] -= 1
+          content = moment.tz(fck, 'Asia/Bangkok')
+        }
+        else {
+          content = parseFloat(content) || 0
+        }
+        out[sensorTitle[idx]] = content
+        // return {[`${sensorTitle[idx]}`]: content}
+      })
+      return out
+    })
+
+    rows.forEach((row, idx) => {
+      // console.log(idx, 'row', row)
+      let data = Object.assign({}, row)
+      let ts = data['Date Time'].toDate()
+      delete data['Date Time']
+      setTimeout(() => {
+        let i = idx
+        console.log(`writing.... no ${i}`)
+        influx.writePoints([
+          {
+            measurement: 'aqm',
+            tags: {
+              // host: 'aqmthai.com',
+              stationId: params.stationId
+            },
+            fields: data,
+            timestamp: ts,
+          }
+        ], {
+          precision: 's',
+          database: 'aqithaidb',
+        })
+      }, idx * 50)
+    })
+    // console.log(rows)
+    // console.log(sensorTitle)
+    // console.log(trTags)
+    // trTags.forEach((row, idx) => {
+    //   console.log(`${row.children[0].content}`)
+    // })
+  })
