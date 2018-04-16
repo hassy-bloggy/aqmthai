@@ -3,14 +3,19 @@ let FormData = require('form-data')
 let parse = require('xml-parser')
 let inspect = require('util').inspect
 let moment = require('moment-timezone')
-
+const influxHost = process.env.INFLUX_HOST
+const influxUsername = process.env.INFLUX_USERNAME
+const influxPassword = process.env.INFLUX_PASSWORD
+const influxDbName = process.env.INFUX_DBNAME
 const Influx = require('influx')
 const influx = new Influx.InfluxDB({
-  hosts: [{host: 'thor.cmmc.io', port: 8086}],
-  username: 'nat',
-  password: 'nattan',
-  database: 'aqmthai_comdb'
+  hosts: [{host: influxHost, port: 8086}],
+  username: influxUsername,
+  password: influxPassword,
+  database: influxDbName
 })
+
+console.log(process.env)
 
 const insertDb = rows => {
   const total = rows.length
@@ -39,8 +44,8 @@ const insertDb = rows => {
   })
 }
 
-const endDate = '2018-12-31'
-const startDate = '2018-01-01'
+const endDate = '2017-12-31'
+const startDate = '2017-01-01'
 
 let stations = {
   '03t': '03t ริมถนนกาญจนาภิเษก เขตบางขุนเทียน กรุงเทพ',
@@ -100,35 +105,24 @@ let stations = {
   // 'm8': 'm8 หน่วยตรวจวัดเคลื่อนที่ 8 ค่ายมหาสุรสิงหนาท จ.ระยอง (เริ่ม 19 เมษายน 60)',
 }
 
-let stationEntries = Object.entries(stations)
-stationEntries.forEach(([stationId, value], majorIdx) => {
-  console.log(`${majorIdx} -> ${value}`)
-  console.log(`starting job ${majorIdx + 1}/${Object.entries(stations).length }`)
-  let params = {
-    paramValue: 'CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5',
-    action: 'showTable',
-    reportType: 'Raw',
-    startTime: '00:00:00',
-    endTime: '00:00:00',
-    dataReportType: '_h',
-    showNumRow: '100000',
-    pageNo: '1',
-  }
-
-  Object.assign(params, {
-    stationId: `${stationId}`,
-    endDate: `${endDate}`,
-    startDate: `${startDate}`,
-  })
-
-  get(params)
-})
+let params = {
+  paramValue: 'CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5',
+  action: 'showTable',
+  reportType: 'Raw',
+  startTime: '00:00:00',
+  endTime: '00:00:00',
+  dataReportType: '_h',
+  showNumRow: '100000',
+  pageNo: '1',
+}
 
 const get = (params) => {
   let body = new FormData()
   let sensorTitleMap
+  let stationId = params.stationId
+  let stationName = params.stationName
   Object.entries(params).forEach(([key, value]) => body.append(key, value))
-  fetch('http://aqmthai.com/includes/getMultiManReport.php', {
+  return fetch('http://aqmthai.com/includes/getMultiManReport.php', {
     method: 'POST', body, header: body.getHeaders()
   }).then(res => res.text())
     .then(body => {
@@ -143,7 +137,8 @@ const get = (params) => {
       return rows
     })
     .then(rows => {
-      console.log(`tr tags = ${rows.length}`)
+      // console.log(`${params.stationName} found ${rows.length} data points.`)
+      console.log(`..... ${stationId} has been downloaded, len=${rows.length}.`)
       return rows.map((v) => {
         let row = {}
         let c = v.children.shift().content
@@ -152,12 +147,29 @@ const get = (params) => {
         let values = v.children.map(v => parseFloat(v.content) || -1)
         let z = [dField, ...values]
         z.forEach((sensorValue, idx) => row[sensorTitleMap[idx]] = sensorValue)
-        row.stationId = params.stationId
+        row.stationId = stationId
         return row
       })
     })
-    .then(insertDb)
-    .then(rows => {
-      // console.log(rows)
-    })
+  // .then(insertDb)
 }
+
+const promises = Object.entries(stations).map(([stationId, stationName], majorIdx) => {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      console.log(`starting job ${majorIdx + 1}/${Object.entries(stations).length } (${stationId})`)
+      Object.assign(params, {stationId, endDate, startDate, stationName})
+      get(params).then(resolve).catch(reject)
+    }, majorIdx * 5000)
+  })
+})
+
+Promise.all(promises).then(results => {
+  console.log(`all done. size = ${results.length}.`)
+  const reducer = (accumulator, currentValue) => accumulator + currentValue
+  const lenArray = results.map(item => item.length)
+  const totalLen = lenArray.reduce(reducer)
+  console.log(`totalLen = ${totalLen}`)
+}).catch((err) => {
+  console.log('got error', err)
+})
