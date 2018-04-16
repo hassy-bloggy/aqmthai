@@ -11,6 +11,8 @@ const influx = new Influx.InfluxDB({
   password: 'nattan',
   database: 'aqithaidb'
 })
+const endDate = '2017-12-31'
+const startDate = '2017-01-01'
 
 let stations = {
   '03t': '03t ริมถนนกาญจนาภิเษก เขตบางขุนเทียน กรุงเทพ',
@@ -70,7 +72,8 @@ let stations = {
   // 'm8': 'm8 หน่วยตรวจวัดเคลื่อนที่ 8 ค่ายมหาสุรสิงหนาท จ.ระยอง (เริ่ม 19 เมษายน 60)',
 }
 
-Object.entries(stations).forEach(([stationId, value], majorIdx) => {
+let stationEntries = Object.entries(stations)
+stationEntries.forEach(([stationId, value], majorIdx) => {
   console.log(`${majorIdx} -> ${value}`)
   setTimeout(() => {
     console.log(`starting job ${majorIdx + 1}/${Object.entries(stations).length }`)
@@ -79,8 +82,8 @@ Object.entries(stations).forEach(([stationId, value], majorIdx) => {
       stationId: `${stationId}`,
       action: 'showTable',
       reportType: 'Raw',
-      endDate: '2017-12-31',
-      startDate: '2017-06-01',
+      endDate: `${endDate}`,
+      startDate: `${startDate}`,
       startTime: '00:00:00',
       endTime: '00:00:00',
       dataReportType: '_h',
@@ -90,7 +93,8 @@ Object.entries(stations).forEach(([stationId, value], majorIdx) => {
 
     /* generate form data */
     let form = new FormData()
-    Object.entries(params).forEach(([key, value]) => form.append(key, value))
+    let paramEntries = Object.entries(params)
+    paramEntries.forEach(([key, value]) => form.append(key, value))
     let headers = form.getHeaders()
 
     let sensorTitle
