@@ -6,13 +6,41 @@ let moment = require('moment-timezone')
 
 const Influx = require('influx')
 const influx = new Influx.InfluxDB({
-  hosts: [{host: 'dustboy.laris.co', port: 8086}],
+  hosts: [{host: 'thor.cmmc.io', port: 8086}],
   username: 'nat',
   password: 'nattan',
-  database: 'aqithaidb'
+  database: 'aqmthai_comdb'
 })
-const endDate = '2017-12-31'
-const startDate = '2017-01-01'
+
+const insertDb = rows => {
+  const total = rows.length
+  const delayMs = 50
+  rows.forEach((row, idx) => {
+    const stationId = row.stationId
+    const ts = row.time
+    delete row.time
+    delete row.stationId
+    setTimeout(() => {
+      console.log(`writing.... [${stations[stationId]}] [${ts}] -- ${((idx + 1) * 100 / total).toFixed(2)}% [${idx + 1}/${total}] `)
+      influx.writePoints([
+        {
+          measurement: 'aqm',
+          tags: {
+            stationId: stations[stationId]
+          },
+          fields: row,
+          timestamp: ts,
+        }
+      ], {
+        precision: 's',
+        database: 'aqmthai_comdb',
+      })
+    }, idx * delayMs)
+  })
+}
+
+const endDate = '2018-12-31'
+const startDate = '2018-01-01'
 
 let stations = {
   '03t': '03t ริมถนนกาญจนาภิเษก เขตบางขุนเทียน กรุงเทพ',
@@ -115,44 +143,22 @@ stationEntries.forEach(([stationId, value], majorIdx) => {
       .then(rows => {
         console.log(`tr tags = ${rows.length}`)
         return rows.map((v) => {
-          let out = {}
+          let row = {}
           let c = v.children.shift().content
           let [y, m, d, hh, mm, ss] = c.split(',')
           let dField = moment.tz([y, m - 1, d, hh, mm, ss], 'Asia/Bangkok').toDate()
           let values = v.children.map(v => parseFloat(v.content) || -1)
           let z = [dField, ...values]
-          z.forEach((sensorValue, idx) => out[sensorTitle[idx]] = sensorValue)
-          return out
+          z.forEach((sensorValue, idx) => row[sensorTitle[idx]] = sensorValue)
+          row.stationId = stationId
+          return row
         })
       })
-      .then(rows => {
-        const total = rows.length
-        const delayMs = 50
-        rows.forEach((row, idx) => {
-          const ts = row.time
-          delete row.time
-          setTimeout(() => {
-            console.log(`writing.... [${stations[stationId]}] [${ts}] -- ${((idx + 1) * 100 / total).toFixed(2)}% [${idx + 1}/${total}] `)
-            influx.writePoints([
-              {
-                measurement: 'aqm',
-                tags: {
-                  stationId: stations[params.stationId]
-                },
-                fields: row,
-                timestamp: ts,
-              }
-            ], {
-              precision: 's',
-              database: 'aqithaidb',
-            })
-          }, idx * delayMs)
-        })
-      })
+      .then(insertDb)
       .then(rows => {
         // console.log(rows)
       })
-  }, majorIdx * 5300 * 55 + (15 * 1000))
+  }, majorIdx * 5300 * 55 + (1 * 1000))
 })
 
 
