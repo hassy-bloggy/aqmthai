@@ -103,62 +103,61 @@ let stations = {
 let stationEntries = Object.entries(stations)
 stationEntries.forEach(([stationId, value], majorIdx) => {
   console.log(`${majorIdx} -> ${value}`)
-  setTimeout(() => {
-    console.log(`starting job ${majorIdx + 1}/${Object.entries(stations).length }`)
-    let params = {
-      paramValue: 'CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5',
-      stationId: `${stationId}`,
-      action: 'showTable',
-      reportType: 'Raw',
-      endDate: `${endDate}`,
-      startDate: `${startDate}`,
-      startTime: '00:00:00',
-      endTime: '00:00:00',
-      dataReportType: '_h',
-      showNumRow: '100000',
-      pageNo: '1',
-    }
+  console.log(`starting job ${majorIdx + 1}/${Object.entries(stations).length }`)
+  let params = {
+    paramValue: 'CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5',
+    action: 'showTable',
+    reportType: 'Raw',
+    startTime: '00:00:00',
+    endTime: '00:00:00',
+    dataReportType: '_h',
+    showNumRow: '100000',
+    pageNo: '1',
+  }
 
-    /* generate form data */
-    let form = new FormData()
-    let paramEntries = Object.entries(params)
-    paramEntries.forEach(([key, value]) => form.append(key, value))
-    let headers = form.getHeaders()
+  Object.assign(params, {
+    stationId: `${stationId}`,
+    endDate: `${endDate}`,
+    startDate: `${startDate}`,
+  })
 
-    let sensorTitle
-    fetch('http://aqmthai.com/includes/getMultiManReport.php', {
-      method: 'POST', body: form, headers
-    }).then(res => res.text())
-      .then(body => {
-        const obj = parse(body)
-        const rows = obj.root.children[2].children
-        const trHeader = rows.shift().children
-        sensorTitle = trHeader.map(val => {
-          const [field1, field2] = val.content.split('_')
-          return field2 || 'time'
-        })
-        rows.splice(-5) // remove average fields 5 last fields
-        return rows
-      })
-      .then(rows => {
-        console.log(`tr tags = ${rows.length}`)
-        return rows.map((v) => {
-          let row = {}
-          let c = v.children.shift().content
-          let [y, m, d, hh, mm, ss] = c.split(',')
-          let dField = moment.tz([y, m - 1, d, hh, mm, ss], 'Asia/Bangkok').toDate()
-          let values = v.children.map(v => parseFloat(v.content) || -1)
-          let z = [dField, ...values]
-          z.forEach((sensorValue, idx) => row[sensorTitle[idx]] = sensorValue)
-          row.stationId = stationId
-          return row
-        })
-      })
-      .then(insertDb)
-      .then(rows => {
-        // console.log(rows)
-      })
-  }, majorIdx * 5300 * 55 + (1 * 1000))
+  get(params)
 })
 
-
+const get = (params) => {
+  let body = new FormData()
+  let sensorTitleMap
+  Object.entries(params).forEach(([key, value]) => body.append(key, value))
+  fetch('http://aqmthai.com/includes/getMultiManReport.php', {
+    method: 'POST', body, header: body.getHeaders()
+  }).then(res => res.text())
+    .then(body => {
+      const xml = parse(body)
+      const rows = xml.root.children[2].children
+      const trHeader = rows.shift().children
+      sensorTitleMap = trHeader.map(val => {
+        const [field1, field2] = val.content.split('_')
+        return field2 || 'time'
+      })
+      rows.splice(-5) // remove average fields 5 last fields
+      return rows
+    })
+    .then(rows => {
+      console.log(`tr tags = ${rows.length}`)
+      return rows.map((v) => {
+        let row = {}
+        let c = v.children.shift().content
+        let [yyyy, m, d, hh, mm, ss] = c.split(',')
+        let dField = moment.tz([yyyy, m - 1, d, hh, mm, ss], 'Asia/Bangkok').toDate()
+        let values = v.children.map(v => parseFloat(v.content) || -1)
+        let z = [dField, ...values]
+        z.forEach((sensorValue, idx) => row[sensorTitleMap[idx]] = sensorValue)
+        row.stationId = params.stationId
+        return row
+      })
+    })
+    .then(insertDb)
+    .then(rows => {
+      // console.log(rows)
+    })
+}
