@@ -6,10 +6,10 @@ let moment = require('moment-timezone')
 
 const Influx = require('influx')
 const influx = new Influx.InfluxDB({
-  hosts: [{host: 'dustboy.laris.co', port: 8086}],
+  hosts: [{host: 'localhost', port: 8086}],
   username: 'nat',
   password: 'nattan',
-  database: 'aqithaidb'
+  database: 'aqmthai_comdb'
 })
 
 let stations = {
@@ -149,6 +149,4 @@ Object.entries(stations).forEach(([stationId, value], majorIdx) => {
         // console.log(rows)
       })
   }, majorIdx * 5300 * 55 + (15 * 1000))
-})
-
-
+}) 
