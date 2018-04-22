@@ -172,4 +172,5 @@ Promise.all(promises).then(results => {
   console.log(`totalLen = ${totalLen}`)
 }).catch((err) => {
   console.log('got error', err)
-}) 
+})
+
