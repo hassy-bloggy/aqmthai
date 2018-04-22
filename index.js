@@ -3,6 +3,8 @@ let FormData = require('form-data')
 let parse = require('xml-parser')
 let inspect = require('util').inspect
 let moment = require('moment-timezone')
+
+const jobDelayMs = 2000
 const influxHost = process.env.INFLUX_HOST
 const influxUsername = process.env.INFLUX_USERNAME
 const influxPassword = process.env.INFLUX_PASSWORD
@@ -160,7 +162,7 @@ const promises = Object.entries(stations).map(([stationId, stationName], majorId
       console.log(`starting job ${majorIdx + 1}/${Object.entries(stations).length } (${stationId})`)
       Object.assign(params, {stationId, endDate, startDate, stationName})
       get(params).then(resolve).catch(reject)
-    }, majorIdx * 5000)
+    }, majorIdx * jobDelayMs)
   })
 })
 
