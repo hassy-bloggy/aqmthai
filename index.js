@@ -4,7 +4,12 @@ let parse = require('xml-parser')
 let inspect = require('util').inspect
 let moment = require('moment-timezone')
 
-const jobDelayMs = 2000
+const jobDelayMs = 5000
+const insertDbDelayMs = 50
+
+const startDate = '2014-01-01'
+const endDate =   '2015-12-31'
+
 const influxHost = process.env.INFLUX_HOST
 const influxUsername = process.env.INFLUX_USERNAME
 const influxPassword = process.env.INFLUX_PASSWORD
@@ -17,11 +22,8 @@ const influx = new Influx.InfluxDB({
   database: influxDbName
 })
 
-console.log(process.env)
-
-const insertDb = rows => {
+const insertDb = (rows) => {
   const total = rows.length
-  const delayMs = 50
   rows.forEach((row, idx) => {
     const stationId = row.stationId
     const ts = row.time
@@ -40,14 +42,11 @@ const insertDb = rows => {
         }
       ], {
         precision: 's',
-        database: 'aqmthai_comdb',
+        database: influxDbName,
       })
-    }, idx * delayMs)
+    }, idx * insertDbDelayMs + 0.2*(idx*insertDbDelayMs))
   })
-}
-
-const endDate = '2017-12-31'
-const startDate = '2017-01-01'
+} 
 
 let stations = {
   '03t': '03t ริมถนนกาญจนาภิเษก เขตบางขุนเทียน กรุงเทพ',
@@ -153,7 +152,6 @@ const get = (params) => {
         return row
       })
     })
-  // .then(insertDb)
 }
 
 const promises = Object.entries(stations).map(([stationId, stationName], majorIdx) => {
@@ -166,13 +164,24 @@ const promises = Object.entries(stations).map(([stationId, stationName], majorId
   })
 })
 
-Promise.all(promises).then(results => {
-  console.log(`all done. size = ${results.length}.`)
-  const reducer = (accumulator, currentValue) => accumulator + currentValue
-  const lenArray = results.map(item => item.length)
-  const totalLen = lenArray.reduce(reducer)
+Promise.all(promises).then(stations => {
+  console.log(`all done. size = ${stations.length}.`)
+  const reducer = (memo, currentValue) => memo + currentValue
+  const arrayLen = stations.map(rows => rows.length)
+  const totalLen = arrayLen.reduce(reducer) 
   console.log(`totalLen = ${totalLen}`)
-}).catch((err) => {
+  return stations
+})
+.then(stations => { 
+  stations.forEach((stationRecs, idx) => {
+   const len = stationRecs.length
+    setTimeout(() => {
+        console.log(`inserting job = ${idx+1/len}`)
+    	insertDb(stationRecs) 
+   }, idx*len*insertDbDelayMs)
+  }) 
+}) 
+.catch((err) => {
   console.log('got error', err)
 })
 
