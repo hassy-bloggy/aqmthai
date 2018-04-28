@@ -14,6 +14,7 @@
     "moment-timezone": "^0.5.14",
     "node-fetch": "^2.1.2",
     "progress": "^2.0.0",
+    "promise-sequential": "^1.1.1",
     "request": "^2.85.0",
     "xml-parser": "^1.2.1"
   }

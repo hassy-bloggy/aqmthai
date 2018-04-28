@@ -5,6 +5,7 @@ const moment = require('moment-timezone')
 const stations = require('./stationsDb')
 const ProgressBar = require('progress')
 const {createDispatcher} = require('./utils')
+const sequential = require('promise-sequential')
 
 const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remaining: :etas', {
   complete: '=',
@@ -13,19 +14,22 @@ const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remain
   total: 100
 })
 
-const fetchDelayMs = 10 * 1000
-const insertDbDelayMs = 50
+const log = (...args) => {
+  bar.interrupt(...args)
+}
 
+const insertDbDelayMs = 20
 const startDate = process.env.START_DATE || '2018-04-20'
 const endDate = process.env.END_DATE || '2018-12-31'
 
 const influxHost = process.env.INFLUX_HOST
+const influxPort = process.env.INFLUX_PORT || 8086
 const influxUsername = process.env.INFLUX_USERNAME
 const influxPassword = process.env.INFLUX_PASSWORD
 const influxDbName = process.env.INFUX_DBNAME
 const Influx = require('influx')
 const influx = new Influx.InfluxDB({
-  hosts: [{host: influxHost, port: 8086}],
+  hosts: [{host: influxHost, port: influxPort}],
   username: influxUsername,
   password: influxPassword,
   database: influxDbName
@@ -50,7 +54,7 @@ const get = (params) => {
   let sensorTitleMap
   let stationId = params.stationId
   Object.entries(params).forEach(([key, value]) => body.append(key, value))
-  bar.interrupt(`start fetching station ${stationId}`)
+  // log(`start fetching station ${stationId}`)
 
   return fetch('http://aqmthai.com/includes/getMultiManReport.php', {
     method: 'POST', body, header: body.getHeaders()
@@ -88,7 +92,8 @@ const get = (params) => {
       })
     })
     .catch(err => {
-      bar.interrupt(`fetch data error at station ${stationId}.`)
+      console.log('...fetch error.')
+      log(`fetch data error at station ${stationId}.`)
     })
 }
 
@@ -96,7 +101,7 @@ const bucket = []
 const fetchBucket = []
 let sct = 0
 
-const d1 = createDispatcher(bucket, insertDbDelayMs, {
+const insertDbDispatcher = createDispatcher(bucket, insertDbDelayMs, {
   pass: row => Object.keys(row.data).length !== 0,
   fn: (row, ct, total) => {
     const point = Object.assign({}, row.data)
@@ -126,28 +131,34 @@ const d2 = createDispatcher(fetchBucket, 10, {
 d2.run()
 
 const promises = Object.entries(stations).map(([stationId, stationName], majorIdx) => {
-  return new Promise((resolve, reject) => {
+  return () => new Promise((resolve, reject) => {
+    Object.assign(params, {stationId, endDate, startDate, stationName})
     const _resolve = (items) => {
-      d1.add(items)
-      bar.interrupt(`${sct}/${Object.values(stations).length} received more ${items.length} items from ${stationName}`)
-      return resolve(items)
+      insertDbDispatcher.add(items)
+      log(`${sct}/${Object.values(stations).length} received more ${items.length} items from ${stationName}`)
+      resolve(items)
     }
-    setTimeout(() => {
-      ++sct
-      Object.assign(params, {stationId, endDate, startDate, stationName})
-      get(params).then(_resolve).catch(reject)
-    }, majorIdx * fetchDelayMs + 1000)
+    sct++
+    get(params).then(_resolve).catch(reject)
   })
 })
 
-Promise.all(promises).then(stations => {
-  console.log(`all done. size = ${stations.length}.`)
-  const arrayLen = stations.map(rows => rows.length)
-  const totalLen = arrayLen.reduce((prev, currentValue) => prev + currentValue)
-  console.log(`totalLen = ${totalLen}`)
-  return stations
-}).catch((err) => {
-  bar.interrupt(`got error >> ${err.toString()}`)
-})
+sequential(promises)
+  .then(res => {
+    log('all requests done.')
+  })
+  .catch(err => {
+    log(`request error = err`)
+  })
 
-d1.run()
+// Promise.all(promises).then(stations => {
+//   console.log(`all done. size = ${stations.length}.`)
+//   const arrayLen = stations.map(rows => rows.length)
+//   const totalLen = arrayLen.reduce((prev, currentValue) => prev + currentValue)
+//   console.log(`totalLen = ${totalLen}`)
+//   return stations
+// }).catch((err) => {
+//   bar.interrupt(`got error >> ${err.toString()}`)
+// })
+
+insertDbDispatcher.run()
