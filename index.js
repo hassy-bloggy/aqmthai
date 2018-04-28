@@ -93,27 +93,38 @@ const get = (params) => {
 }
 
 const bucket = []
+const fetchBucket = []
 let sct = 0
 
-const d1 = createDispatcher(bucket, insertDbDelayMs, (row, ct, total) => {
-  const point = Object.assign({}, row.data)
-  const {stationId, stationName, time} = row.extra
-  influx.writePoints([{
-    measurement: 'aqm', tags: {stationId: stationName},
-    fields: point,
-    timestamp: time,
-  }], {
-    precision: 's',
-    database: influxDbName
-  }).then(() => {
-    bar.update(ct / total, {a: ct, b: total, station: stationId})
-  })
-    .catch((err) => {
-      console.log(`(${ct}${total}) stationId = ${stationId} write data point failed.`, err.toString())
-      console.log(row)
-      console.log('--------------------------------')
+const d1 = createDispatcher(bucket, insertDbDelayMs, {
+  pass: row => Object.keys(row.data).length !== 0,
+  fn: (row, ct, total) => {
+    const point = Object.assign({}, row.data)
+    const {stationId, stationName, time} = row.extra
+    influx.writePoints([{
+      measurement: 'aqm', tags: {stationId: stationName},
+      fields: point,
+      timestamp: time,
+    }], {
+      precision: 's',
+      database: influxDbName
+    }).then(() => {
+      bar.update(ct / total, {a: ct, b: total, station: stationId})
     })
+      .catch((err) => {
+        console.log(`(${ct}${total}) stationId = ${stationId} write data point failed.`, err.toString())
+        console.log(row)
+        console.log('--------------------------------')
+      })
+  }
 })
+
+const d2 = createDispatcher(fetchBucket, 10, {
+  fn: (row, ct, total) => {
+    console.log('d2 dispatcher', row, ct, total)
+  }
+})
+d2.run()
 
 const promises = Object.entries(stations).map(([stationId, stationName], majorIdx) => {
   return new Promise((resolve, reject) => {
@@ -136,9 +147,8 @@ Promise.all(promises).then(stations => {
   const totalLen = arrayLen.reduce((prev, currentValue) => prev + currentValue)
   console.log(`totalLen = ${totalLen}`)
   return stations
+}).catch((err) => {
+  bar.interrupt(`got error >> ${err.toString()}`)
 })
-  .catch((err) => {
-    bar.interrupt(`got error >> ${err.toString()}`)
-  })
 
 d1.run()

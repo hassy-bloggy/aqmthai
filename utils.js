@@ -1,4 +1,4 @@
-createDispatcher = (bucket, intervalTimeMs, fn) => {
+createDispatcher = (bucket, intervalTimeMs, {test: pass, fn}) => {
   let intervalId
   let ct = 0
   let total = 0
@@ -8,7 +8,7 @@ createDispatcher = (bucket, intervalTimeMs, fn) => {
       intervalId = setInterval(() => {
           if (bucket.length === 0) return
           let row = bucket.shift()
-          if (Object.keys(row.data).length === 0) return
+          if (pass && !pass(row)) return
           ct++
           fn(row, ct, total)
         }, intervalTimeMs

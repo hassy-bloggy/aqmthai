@@ -17,7 +17,6 @@ let fn = () => {
     .then(json => {
       console.log(`len = ${json.data.data[0].length}`)
       const out = json.data.data[0].map((v, idx) => {
-        // console.log(idx, v)
         // console.log(inspect(v))
         return {'PM2.5 (ug/m3)': v.value, time: v.timestamp}
       })
