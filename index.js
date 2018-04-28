@@ -18,7 +18,7 @@ const log = (...args) => {
   bar.interrupt(...args)
 }
 
-const insertDbDelayMs = 20
+const insertDbDelayMs = 100
 const startDate = process.env.START_DATE || '2018-04-20'
 const endDate = process.env.END_DATE || '2018-12-31'
 
