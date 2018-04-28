@@ -4,8 +4,9 @@ const parse = require('xml-parser')
 const moment = require('moment-timezone')
 const stations = require('./stationsDb')
 const ProgressBar = require('progress')
+const {createDispatcher} = require('./utils')
 
-const bar = new ProgressBar('  inserting (:a/:b) [:bar] :percent remaining: :etas', {
+const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remaining: :etas', {
   complete: '=',
   incomplete: ' ',
   width: 20,
@@ -30,34 +31,8 @@ const influx = new Influx.InfluxDB({
   database: influxDbName
 })
 
-createDispatcher = (bucket, intervalTimeMs, fn) => {
-  let intervalId
-  let ct = 0
-  let total = 0
-  return {
-    run: () => {
-      console.log(`START DATE = ${startDate}`)
-      console.log(`  END DATE = ${endDate}`)
-      console.log(`starting interval time = ${1000 / intervalTimeMs}Hz`)
-      intervalId = setInterval(() => {
-          if (bucket.length === 0) return
-          let row = bucket.shift()
-          if (Object.keys(row.data).length === 0) return
-          ct++
-          fn(row, ct, total)
-        }, intervalTimeMs
-      )
-    },
-    stop: () => {
-      clearInterval(intervalId)
-    },
-    add: (items) => {
-      total += items.length
-      bucket.push(...items)
-    }
-
-  }
-}
+console.log(`START DATE = ${startDate}`)
+console.log(`  END DATE = ${endDate}`)
 
 let params = {
   paramValue: 'CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5',
@@ -131,7 +106,7 @@ const d1 = createDispatcher(bucket, insertDbDelayMs, (row, ct, total) => {
     precision: 's',
     database: influxDbName
   }).then(() => {
-    bar.update(ct / total, {a: ct, b: total})
+    bar.update(ct / total, {a: ct, b: total, station: stationId})
   })
     .catch((err) => {
       console.log(`(${ct}${total}) stationId = ${stationId} write data point failed.`, err.toString())
