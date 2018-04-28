@@ -9,7 +9,7 @@ const influx = new Influx.InfluxDB({
   database: 'aqithaidb'
 })
 
-const delayMs = 500
+const fetchDelayMs = 500
 
 let fn = () => {
   fetch('https://app.ubidots.com/api/v1.6/public/insights/5ab3ceeec03f9726fffe7c31/data?tz=Asia/Bangkok')
@@ -40,7 +40,7 @@ let fn = () => {
             precision: 's',
             database: 'aqithaidb',
           })
-        }, idx * delayMs)
+        }, idx * fetchDelayMs)
       })
     })
 
@@ -49,4 +49,4 @@ let fn = () => {
 fn()
 setInterval(() => {
   fn()
-}, 500 * delayMs * 2)
+}, 500 * fetchDelayMs * 2)

@@ -1,8 +1,7 @@
-let fetch = require('node-fetch')
-let FormData = require('form-data')
-let parse = require('xml-parser')
-let inspect = require('util').inspect
-let moment = require('moment-timezone')
+const fetch = require('node-fetch')
+const FormData = require('form-data')
+const parse = require('xml-parser')
+const moment = require('moment-timezone')
 const stations = require('./stationsDb')
 const ProgressBar = require('progress')
 
@@ -13,11 +12,11 @@ const bar = new ProgressBar('  inserting (:a/:b) [:bar] :percent remaining: :eta
   total: 100
 })
 
-const jobDelayMs = 5000
+const fetchDelayMs = 40 * 1000
 const insertDbDelayMs = 50
 
-const startDate = '2018-04-20'
-const endDate = '2018-12-31'
+const startDate = process.env.START_DATE || '2018-04-20'
+const endDate = process.env.END_DATE || '2018-12-31'
 
 const influxHost = process.env.INFLUX_HOST
 const influxUsername = process.env.INFLUX_USERNAME
@@ -37,6 +36,8 @@ createDispatcher = (bucket, intervalTimeMs, fn) => {
   let total = 0
   return {
     run: () => {
+      console.log(`START DATE = ${startDate}`)
+      console.log(`  END DATE = ${endDate}`)
       console.log(`starting interval time = ${1000 / intervalTimeMs}Hz`)
       intervalId = setInterval(() => {
           if (bucket.length === 0) return
@@ -74,6 +75,8 @@ const get = (params) => {
   let sensorTitleMap
   let stationId = params.stationId
   Object.entries(params).forEach(([key, value]) => body.append(key, value))
+  bar.interrupt(`start fetching station ${stationId}`)
+
   return fetch('http://aqmthai.com/includes/getMultiManReport.php', {
     method: 'POST', body, header: body.getHeaders()
   }).then(res => res.text())
@@ -110,11 +113,12 @@ const get = (params) => {
       })
     })
     .catch(err => {
-      bar.interrupt(`get error at ${stationId}`)
+      bar.interrupt(`fetch data error at station ${stationId}.`)
     })
 }
 
 const bucket = []
+let sct = 0
 
 const d1 = createDispatcher(bucket, insertDbDelayMs, (row, ct, total) => {
   const point = Object.assign({}, row.data)
@@ -136,19 +140,18 @@ const d1 = createDispatcher(bucket, insertDbDelayMs, (row, ct, total) => {
     })
 })
 
-let sct = 0
-
 const promises = Object.entries(stations).map(([stationId, stationName], majorIdx) => {
   return new Promise((resolve, reject) => {
     const _resolve = (items) => {
       d1.add(items)
-      bar.interrupt(`${++sct}/${Object.values(stations).length} received more ${items.length} items from ${stationName}`)
+      bar.interrupt(`${sct}/${Object.values(stations).length} received more ${items.length} items from ${stationName}`)
       return resolve(items)
     }
     setTimeout(() => {
+      ++sct
       Object.assign(params, {stationId, endDate, startDate, stationName})
       get(params).then(_resolve).catch(reject)
-    }, majorIdx * jobDelayMs + 1000)
+    }, majorIdx * fetchDelayMs + 1000)
   })
 })
 
@@ -160,7 +163,7 @@ Promise.all(promises).then(stations => {
   return stations
 })
   .catch((err) => {
-    console.log('got error', err.toString())
+    bar.interrupt(`got error >> ${err.toString()}`)
   })
 
 d1.run()
