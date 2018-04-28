@@ -113,7 +113,7 @@ const promises = Object.entries(stations).map(([stationId, stationName], majorId
 //     console.log('got error', err)
 //   })
 
-createDispatcher = (bucket, intervalTimeMs) => {
+createDispatcher = (bucket, intervalTimeMs, fn) => {
   let intervalId
   let ct = 0
   return {
@@ -122,30 +122,36 @@ createDispatcher = (bucket, intervalTimeMs) => {
       intervalId = setInterval(() => {
           if (bucket.length === 0) return
           let row = bucket.shift()
-          const point = {}
-          const stationId = row.stationId
-          const ts = row.time
-          const del = ['time', 'stationId', ' ()']
-          // del.forEach(key => delete row[key])
-          const _f = Object.entries(row).filter(([key, val]) => val !== -1)
-          const _r = _f.reduce((prev, [key, val]) => {
-            (prev[key] = val)
-            return prev
-          }, {})
-          console.log(_r)
-          // console.log(`stationId = ${ stationId }`)
-          // console.log(`writing.... [${stations[stationId]}] [${ts}] -- ${((idx + 1) * 100 / total).toFixed(2)}% [${idx + 1}/${total}] `)
-          // influx.writePoints([{
-          //   measurement: 'aqm', tags: {stationId: stations[stationId]},
-          //   fields: row,
-          //   timestamp: ts,
-          // }], {precision: 's', database: influxDbName,})
+          fn(row)
           ct++
         }, intervalTimeMs
       )
+    },
+    stop: () => {
+      clearInterval(intervalId)
     }
   }
 }
 
-const d1 = createDispatcher(bucket, 100)
+const d1 = createDispatcher(bucket, 1000, (row) => {
+  const point = {}
+  const stationId = row.stationId
+  const ts = row.time
+  const del = ['time', 'stationId', ' ()']
+  // del.forEach(key => delete row[key])
+  const _f = Object.entries(row).filter(([key, val]) => val !== -1)
+  const _r = _f.reduce((prev, [key, val]) => {
+    (prev[key] = val)
+    return prev
+  }, {})
+  console.log(_r)
+  // console.log(`stationId = ${ stationId }`)
+  // console.log(`writing.... [${stations[stationId]}] [${ts}] -- ${((idx + 1) * 100 / total).toFixed(2)}% [${idx + 1}/${total}] `)
+  // influx.writePoints([{
+  //   measurement: 'aqm', tags: {stationId: stations[stationId]},
+  //   fields: row,
+  //   timestamp: ts,
+  // }], {precision: 's', database: influxDbName,})
+})
+
 d1.run()
