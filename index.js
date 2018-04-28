@@ -13,7 +13,7 @@ const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remain
   total: 100
 })
 
-const fetchDelayMs = 40 * 1000
+const fetchDelayMs = 10 * 1000
 const insertDbDelayMs = 50
 
 const startDate = process.env.START_DATE || '2018-04-20'
@@ -110,12 +110,11 @@ const d1 = createDispatcher(bucket, insertDbDelayMs, {
       database: influxDbName
     }).then(() => {
       bar.update(ct / total, {a: ct, b: total, station: stationId})
+    }).catch((err) => {
+      console.log(`(${ct}${total}) stationId = ${stationId} write data point failed.`, err.toString())
+      console.log(row)
+      console.log('--------------------------------')
     })
-      .catch((err) => {
-        console.log(`(${ct}${total}) stationId = ${stationId} write data point failed.`, err.toString())
-        console.log(row)
-        console.log('--------------------------------')
-      })
   }
 })
 

@@ -1,4 +1,4 @@
-createDispatcher = (bucket, intervalTimeMs, {test: pass, fn}) => {
+createDispatcher = (bucket, intervalTimeMs, {pass, fn}) => {
   let intervalId
   let ct = 0
   let total = 0
