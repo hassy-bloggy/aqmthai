@@ -4,6 +4,14 @@ let parse = require('xml-parser')
 let inspect = require('util').inspect
 let moment = require('moment-timezone')
 const stations = require('./stationsDb')
+const ProgressBar = require('progress')
+
+const bar = new ProgressBar('  inserting (:a/:b) [:bar] :percent remaining: :etas', {
+  complete: '=',
+  incomplete: ' ',
+  width: 20,
+  total: 100
+})
 
 const jobDelayMs = 5000
 const insertDbDelayMs = 50
@@ -23,12 +31,31 @@ const influx = new Influx.InfluxDB({
   database: influxDbName
 })
 
-const insertDb = (rows) => {
-  const total = rows.length
-  rows.forEach((row, idx) => {
-    setTimeout(() => {
-    }, idx * insertDbDelayMs + 0.2 * (idx * insertDbDelayMs))
-  })
+createDispatcher = (bucket, intervalTimeMs, fn) => {
+  let intervalId
+  let ct = 0
+  let total = 0
+  return {
+    run: () => {
+      console.log(`starting interval time = ${1000 / intervalTimeMs}Hz`)
+      intervalId = setInterval(() => {
+          if (bucket.length === 0) return
+          let row = bucket.shift()
+          if (Object.keys(row.data).length === 0) return
+          ct++
+          fn(row, ct, total)
+        }, intervalTimeMs
+      )
+    },
+    stop: () => {
+      clearInterval(intervalId)
+    },
+    add: (items) => {
+      total += items.length
+      bucket.push(...items)
+    }
+
+  }
 }
 
 let params = {
@@ -46,7 +73,6 @@ const get = (params) => {
   let body = new FormData()
   let sensorTitleMap
   let stationId = params.stationId
-  let stationName = params.stationName
   Object.entries(params).forEach(([key, value]) => body.append(key, value))
   return fetch('http://aqmthai.com/includes/getMultiManReport.php', {
     method: 'POST', body, header: body.getHeaders()
@@ -57,101 +83,84 @@ const get = (params) => {
       const trHeader = rows.shift().children
       sensorTitleMap = trHeader.map(val => {
         const [field1, field2] = val.content.split('_')
-        return field2 || 'time'
+        return field2 || '_time'
       })
       rows.splice(-5) // remove average fields 5 last fields
       return rows
     })
     .then(rows => {
-      console.log(`..... ${stationId} has been downloaded, len=${rows.length}.`)
-      return rows.map((v) => {
+      return rows.map(v => {
         let c = v.children.shift().content
         let [yyyy, m, d, hh, mm, ss] = c.split(',')
-        let dField = moment.tz([yyyy, m - 1, d, hh, mm, ss], 'Asia/Bangkok').toDate()
+        let time = moment.tz([yyyy, m - 1, d, hh, mm, ss], 'Asia/Bangkok').toDate()
         let values = v.children.map(v => parseFloat(v.content) || -1)
-        return Object.entries([dField, ...values]).reduce((prev, [idx, val]) => {
-          prev[sensorTitleMap[idx]] = val
+        let data = Object.entries([time, ...values]).reduce((prev, [idx, val]) => {
+          (val !== -1) && (prev[sensorTitleMap[idx]] = val)
           return prev
         }, {})
+        delete data._time
+        return Object.assign({}, {
+          data,
+          extra: {
+            time: time,
+            stationId: stationId,
+            stationName: stations[stationId]
+          }
+        })
       })
+    })
+    .catch(err => {
+      bar.interrupt(`get error at ${stationId}`)
     })
 }
 
 const bucket = []
+
+const d1 = createDispatcher(bucket, insertDbDelayMs, (row, ct, total) => {
+  const point = Object.assign({}, row.data)
+  const {stationId, stationName, time} = row.extra
+  influx.writePoints([{
+    measurement: 'aqm', tags: {stationId: stationName},
+    fields: point,
+    timestamp: time,
+  }], {
+    precision: 's',
+    database: influxDbName
+  }).then(() => {
+    bar.update(ct / total, {a: ct, b: total})
+  })
+    .catch((err) => {
+      console.log(`(${ct}${total}) stationId = ${stationId} write data point failed.`, err.toString())
+      console.log(row)
+      console.log('--------------------------------')
+    })
+})
+
+let sct = 0
+
 const promises = Object.entries(stations).map(([stationId, stationName], majorIdx) => {
   return new Promise((resolve, reject) => {
     const _resolve = (items) => {
-      bucket.push(...items)
+      d1.add(items)
+      bar.interrupt(`${++sct}/${Object.values(stations).length} received more ${items.length} items from ${stationName}`)
       return resolve(items)
     }
     setTimeout(() => {
-      console.log(`starting job ${majorIdx + 1}/${Object.entries(stations).length } (${stationId})`)
       Object.assign(params, {stationId, endDate, startDate, stationName})
       get(params).then(_resolve).catch(reject)
-    }, majorIdx * jobDelayMs)
+    }, majorIdx * jobDelayMs + 1000)
   })
 })
 
-// Promise.all(promises).then(stations => {
-//   console.log(`all done. size = ${stations.length}.`)
-//   const reducer = (memo, currentValue) => memo + currentValue
-//   const arrayLen = stations.map(rows => rows.length)
-//   const totalLen = arrayLen.reduce(reducer)
-//   console.log(`totalLen = ${totalLen}`)
-//   return stations
-// })
-//   .then(stations => {
-//     stations.forEach((stationRecs, idx) => {
-//       const len = stationRecs.length
-//       setTimeout(() => {
-//         console.log(`inserting job = ${idx + 1 / len}`)
-//         insertDb(stationRecs)
-//       }, idx * len * insertDbDelayMs)
-//     })
-//   })
-//   .catch((err) => {
-//     console.log('got error', err)
-//   })
-
-createDispatcher = (bucket, intervalTimeMs, fn) => {
-  let intervalId
-  let ct = 0
-  return {
-    run: () => {
-      console.log(`starting interval time = ${1000 / intervalTimeMs}Hz`)
-      intervalId = setInterval(() => {
-          if (bucket.length === 0) return
-          let row = bucket.shift()
-          fn(row)
-          ct++
-        }, intervalTimeMs
-      )
-    },
-    stop: () => {
-      clearInterval(intervalId)
-    }
-  }
-}
-
-const d1 = createDispatcher(bucket, 1000, (row) => {
-  const point = {}
-  const stationId = row.stationId
-  const ts = row.time
-  const del = ['time', 'stationId', ' ()']
-  // del.forEach(key => delete row[key])
-  const _f = Object.entries(row).filter(([key, val]) => val !== -1)
-  const _r = _f.reduce((prev, [key, val]) => {
-    (prev[key] = val)
-    return prev
-  }, {})
-  console.log(_r)
-  // console.log(`stationId = ${ stationId }`)
-  // console.log(`writing.... [${stations[stationId]}] [${ts}] -- ${((idx + 1) * 100 / total).toFixed(2)}% [${idx + 1}/${total}] `)
-  // influx.writePoints([{
-  //   measurement: 'aqm', tags: {stationId: stations[stationId]},
-  //   fields: row,
-  //   timestamp: ts,
-  // }], {precision: 's', database: influxDbName,})
+Promise.all(promises).then(stations => {
+  console.log(`all done. size = ${stations.length}.`)
+  const arrayLen = stations.map(rows => rows.length)
+  const totalLen = arrayLen.reduce((prev, currentValue) => prev + currentValue)
+  console.log(`totalLen = ${totalLen}`)
+  return stations
 })
+  .catch((err) => {
+    console.log('got error', err.toString())
+  })
 
 d1.run()
