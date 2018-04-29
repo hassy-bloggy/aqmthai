@@ -8,18 +8,19 @@ const {createDispatcher, showFiglet, configStore} = require('./utils')
 const sequential = require('promise-sequential')
 const Influx = require('influx')
 const inquirer = require('inquirer')
+const Constants = require('./Constants')
 
-let influxHost = process.env.INFLUX_HOST
-let influxPort = process.env.INFLUX_PORT || 8086
-let influxUsername = process.env.INFLUX_USERNAME
-let influxPassword = process.env.INFLUX_PASSWORD
-let influxDbName = process.env.INFUX_DBNAME
+let influxHost = configStore.get(Constants.INFLUX_HOST) || process.env.INFLUX_HOST
+let influxPort = configStore.get(Constants.INFLUX_PORT) || process.env.INFLUX_PORT || 8086
+let influxUsername = configStore.get(Constants.INFLUX_USERNAME) || process.env.INFLUX_USERNAME
+let influxPassword = configStore.get(Constants.INFLUX_PASSWORD) || process.env.INFLUX_PASSWORD
+let influxDbName = configStore.get(Constants.INFLUX_DB_NAME) || process.env.INFUX_DBNAME
 let influxDbMeasurement = process.env.INFUX_MEASUREMENT || 'aqm'
 let influx
 
 const log = (...args) => bar.interrupt(...args)
 
-const insertDbDelayMs = 100
+const insertDbDelayMs = 25
 const startDate = process.env.START_DATE || '2018-04-20'
 const endDate = process.env.END_DATE || '2018-12-31'
 
@@ -37,15 +38,15 @@ const promptLogin = () => {
     {
       name: 'influxHost',
       type: 'input',
-      // default: configStore.get(Constants.CONF_USERNAME),
       default: influxHost,
       message: 'Enter your InfluxDB host:',
       validate: function (value) {
         if (value.length) {
-          // configStore.set(Constants.CONF_USERNAME, value)
+          influxHost = value
+          configStore.set(Constants.INFLUX_HOST, influxHost)
           return true
         } else {
-          return 'Please enter your username or e-mail address'
+          return 'Please enter your host:'
         }
       }
     },
@@ -57,7 +58,8 @@ const promptLogin = () => {
       validate: function (value) {
         const input = parseInt(value, 10)
         if (!isNaN(input)) {
-          // Utils.set(Constants.CONF_PASSWORD, value)
+          influxPort = input
+          configStore.set(Constants.INFLUX_PORT, influxPort)
           return true
         } else {
           return 'Please the valid port number.'
@@ -67,12 +69,12 @@ const promptLogin = () => {
     {
       name: 'influxUsername',
       type: 'input',
-      // default: configStore.get(Constants.CONF_USERNAME),
       default: influxUsername,
       message: 'Enter your InfluxDB username:',
       validate: function (value) {
         if (value.length) {
-          // configStore.set(Constants.CONF_USERNAME, value)
+          influxUsername = value
+          configStore.set(Constants.INFLUX_USERNAME, influxUsername)
           return true
         } else {
           return 'Please enter your influxDB username.'
@@ -93,21 +95,22 @@ const promptLogin = () => {
           } else {
             influxPassword = value
           }
-          // Utils.set(Constants.CONF_PASSWORD, value)
+          configStore.set(Constants.INFLUX_PASSWORD, influxPassword)
           return true
         } else {
-          return 'Please enter your password'
+          return 'Please enter your influxdb password'
         }
       }
     },
     {
       name: 'influxMeasurement',
       type: 'input',
-      // default: configStore.get(Constants.CONF_USERNAME),
       default: influxDbMeasurement,
       message: 'Enter your InfluxDB measurement:',
       validate: function (value) {
         if (value.length) {
+          influxDbMeasurement = value
+          configStore.set(Constants.INFLUX_DB_MEASUREMENT, influxDbMeasurement)
           return true
         } else {
           return 'Please enter your influxdb measurement.'
@@ -120,17 +123,39 @@ const promptLogin = () => {
 
 const login = () => {
   promptLogin().then(answers => {
-    console.log('done login', JSON.stringify(answers, null, '  '))
     influx = new Influx.InfluxDB({
       hosts: [{host: influxHost, port: influxPort}],
       username: influxUsername,
       password: influxPassword,
       database: influxDbName
     })
+
     influx.getMeasurements().then(names => {
       console.log('My measurement names are: ' + names.join(', '))
-      showStationsCheckbox().then(answers => {
-        console.log(JSON.stringify(answers, null, '  '))
+      configStore.set(Constants.INFLUX_DB_NAME, answers.influxDbName)
+      showStationsCheckbox().then(selectedStations => {
+        const promises = selectedStations.map(stationId => {
+          return () => new Promise((resolve, reject) => {
+            const stationName = stations[stationId]
+            Object.assign(params, {stationId, endDate, startDate, stationName})
+            const _resolve = (items) => {
+              insertDbDispatcher.add(items)
+              log(`${sct}/${selectedStations.length} received more ${items.length} items from ${stationName}`)
+              resolve(items)
+            }
+            log(`start fetching ${++sct}...`)
+            get(params).then(_resolve).catch(reject)
+          })
+        })
+
+        insertDbDispatcher.run()
+        sequential(promises)
+          .then(res => {
+            log('all requests done.')
+          })
+          .catch(err => {
+            log(`request error = err`)
+          })
       })
     }).catch(ex => {
       console.log(ex.toString())
@@ -142,25 +167,20 @@ const login = () => {
 login()
 
 const showStationsCheckbox = () => {
+  const qText = 'choose stations'
   let questions = [
     {
-      name: 'choose stations',
-      message: 'Select applications to see the detail',
+      name: qText,
+      message: 'Select aqmthai.com\'s station.',
       type: 'checkbox',
       defaultChecked: true,
       paginated: false,
-      pageSize: 15,
+      pageSize: 10,
       choices: Object.entries(stations).map(([value, name]) => { return {value, name, checked: false}}),
-      // when: function (answers) {
-      //   // console.log('answers', answers)
-      //   return answers.Actions === Constants.SHOW_MQTT_DETAIL
-      // }
+      validate: val => val.length !== 0
     }]
-  return inquirer.prompt(questions)
+  return inquirer.prompt(questions).then(answers => answers[qText])
 }
-
-// console.log(`START DATE = ${startDate}`)
-// console.log(`  END DATE = ${endDate}`)
 
 let params = {
   paramValue: 'CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5',
@@ -253,26 +273,3 @@ const d2 = createDispatcher(fetchBucket, 10, {
   }
 })
 
-const promises = Object.entries(stations).map(([stationId, stationName], majorIdx) => {
-  return () => new Promise((resolve, reject) => {
-    Object.assign(params, {stationId, endDate, startDate, stationName})
-    const _resolve = (items) => {
-      insertDbDispatcher.add(items)
-      log(`${sct}/${Object.values(stations).length} received more ${items.length} items from ${stationName}`)
-      resolve(items)
-    }
-    log(`start fetching ${++sct}...`)
-    get(params).then(_resolve).catch(reject)
-  })
-})
-
-// sequential(promises)
-//   .then(res => {
-//     log('all requests done.')
-//   })
-//   .catch(err => {
-//     log(`request error = err`)
-//   })
-//
-// // insertDbDispatcher.run()
-// // d2.run()

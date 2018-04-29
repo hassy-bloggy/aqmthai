@@ -1,7 +1,7 @@
 {
-  "name": "aqmthai",
+  "name": "aqmthai.js",
   "version": "1.0.0",
-  "description": "",
+  "description": "a non-official aqmthai.com's public report to influxdb importer.",
   "main": "index.js",
   "bin": {
     "aqmthai": "bin/app.js"
