@@ -9,8 +9,7 @@ createDispatcher = (bucket, intervalTimeMs, {pass, fn}) => {
           if (bucket.length === 0) return
           let row = bucket.shift()
           if (pass && !pass(row)) return
-          ct++
-          fn(row, ct, total)
+          fn(row, ++ct, total)
         }, intervalTimeMs
       )
     },

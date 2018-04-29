@@ -6,6 +6,7 @@ const stations = require('./stationsDb')
 const ProgressBar = require('progress')
 const {createDispatcher} = require('./utils')
 const sequential = require('promise-sequential')
+const pkg = require('./package')
 
 const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remaining: :etas', {
   complete: '=',
@@ -14,9 +15,7 @@ const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remain
   total: 100
 })
 
-const log = (...args) => {
-  bar.interrupt(...args)
-}
+const log = (...args) => bar.interrupt(...args)
 
 const insertDbDelayMs = 100
 const startDate = process.env.START_DATE || '2018-04-20'
@@ -54,7 +53,7 @@ const get = (params) => {
   let sensorTitleMap
   let stationId = params.stationId
   Object.entries(params).forEach(([key, value]) => body.append(key, value))
-  // log(`start fetching station ${stationId}`)
+  // log(`start fetching station ${stationId}....`)
 
   return fetch('http://aqmthai.com/includes/getMultiManReport.php', {
     method: 'POST', body, header: body.getHeaders()
@@ -138,7 +137,7 @@ const promises = Object.entries(stations).map(([stationId, stationName], majorId
       log(`${sct}/${Object.values(stations).length} received more ${items.length} items from ${stationName}`)
       resolve(items)
     }
-    sct++
+    log(`start fetching ${++sct}...`)
     get(params).then(_resolve).catch(reject)
   })
 })
@@ -150,15 +149,5 @@ sequential(promises)
   .catch(err => {
     log(`request error = err`)
   })
-
-// Promise.all(promises).then(stations => {
-//   console.log(`all done. size = ${stations.length}.`)
-//   const arrayLen = stations.map(rows => rows.length)
-//   const totalLen = arrayLen.reduce((prev, currentValue) => prev + currentValue)
-//   console.log(`totalLen = ${totalLen}`)
-//   return stations
-// }).catch((err) => {
-//   bar.interrupt(`got error >> ${err.toString()}`)
-// })
 
 insertDbDispatcher.run()
