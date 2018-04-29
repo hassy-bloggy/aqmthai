@@ -147,33 +147,35 @@ const login = () => {
 
     influx.getDatabaseNames()
       .then(names => {
-        console.log(names, '>>', influxDbName)
         if (names.includes(influxDbName)) {
           showStationsCheckbox().then(selectedStations => {
             const promises = selectedStations.map(stationId => {
               return () => new Promise((resolve, reject) => {
+                let jobId
                 const stationName = stations[stationId]
                 Object.assign(params, {stationId, endDate, startDate, stationName})
                 const _resolve = (items) => {
                   insertDbDispatcher.add(items)
-                  log(`${sct}/${selectedStations.length} received more ${items.length} items from ${stationName}`)
+                  log(`>>>> done with ${items.length} records.`)
                   resolve(items)
                 }
-                log(`start fetching ${++sct}...`)
+                jobId = ++sct
+                log(`> job ${jobId}/${selectedStations.length} station=${stationName}`)
                 get(params).then(_resolve).catch(reject)
               })
             })
             insertDbDispatcher.run()
             sequential(promises)
               .then(res => {
-                log('all requests done.')
+                // log('all http requests done.')
               })
               .catch(err => {
-                log(`request error = err`)
+                log(`request error = ${err}`)
               })
           })
         }
         else {
+          console.log(names, 'your input >>', influxDbName)
           console.log(`invalid database name.`)
           login()
         }
@@ -284,6 +286,11 @@ const insertDbDispatcher = createDispatcher(bucket, insertDbDelayMs, {
       console.log(row)
       console.log('--------------------------------')
     })
+  },
+  finishFn: () => {
+    bar.terminate()
+    console.log('app finished.')
+    process.exit()
   }
 })
 
