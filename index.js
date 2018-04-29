@@ -4,16 +4,35 @@ const parse = require('xml-parser')
 const moment = require('moment-timezone')
 const stations = require('./stationsDb')
 const ProgressBar = require('progress')
-const {createDispatcher} = require('./utils')
+const {createDispatcher, showFiglet, configStore} = require('./utils')
 const sequential = require('promise-sequential')
-const pkg = require('./package')
-
+const inquirer = require('inquirer')
 const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remaining: :etas', {
   complete: '=',
   incomplete: ' ',
   width: 20,
   total: 100
 })
+
+showFiglet()
+
+const showStationsCheckbox = () => {
+  let questions = [
+    {
+      name: 'choose stations',
+      message: 'Select applications to see the detail',
+      type: 'checkbox',
+      defaultChecked: true,
+      paginated: false,
+      pageSize: 15,
+      choices: Object.entries(stations).map(([value, name]) => { return {value, name, checked: false}}),
+      // when: function (answers) {
+      //   // console.log('answers', answers)
+      //   return answers.Actions === Constants.SHOW_MQTT_DETAIL
+      // }
+    }]
+  return inquirer.prompt(questions)
+}
 
 const log = (...args) => bar.interrupt(...args)
 
@@ -30,12 +49,22 @@ const Influx = require('influx')
 const influx = new Influx.InfluxDB({
   hosts: [{host: influxHost, port: influxPort}],
   username: influxUsername,
-  password: influxPassword,
   database: influxDbName
 })
 
-console.log(`START DATE = ${startDate}`)
-console.log(`  END DATE = ${endDate}`)
+influx.getMeasurements()
+  .then(names => {
+    console.log('My measurement names are: ' + names.join(', '))
+    showStationsCheckbox().then(answers => {
+      console.log(JSON.stringify(answers, null, '  '))
+    })
+  })
+  .catch(ex => {
+    console.log(ex.toString())
+  })
+
+// console.log(`START DATE = ${startDate}`)
+// console.log(`  END DATE = ${endDate}`)
 
 let params = {
   paramValue: 'CO,NO,NOX,NO2,SO2,O3,PM10,WD,TEMP,RH,SRAD,NRAD,BP,RAIN,WS,THC,PM2.5',
@@ -127,7 +156,6 @@ const d2 = createDispatcher(fetchBucket, 10, {
     console.log('d2 dispatcher', row, ct, total)
   }
 })
-d2.run()
 
 const promises = Object.entries(stations).map(([stationId, stationName], majorIdx) => {
   return () => new Promise((resolve, reject) => {
@@ -142,12 +170,13 @@ const promises = Object.entries(stations).map(([stationId, stationName], majorId
   })
 })
 
-sequential(promises)
-  .then(res => {
-    log('all requests done.')
-  })
-  .catch(err => {
-    log(`request error = err`)
-  })
-
-insertDbDispatcher.run()
+// sequential(promises)
+//   .then(res => {
+//     log('all requests done.')
+//   })
+//   .catch(err => {
+//     log(`request error = err`)
+//   })
+//
+// // insertDbDispatcher.run()
+// // d2.run()

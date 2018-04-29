@@ -56,4 +56,6 @@ let stations = {
   // 'm8': 'm8 หน่วยตรวจวัดเคลื่อนที่ 8 ค่ายมหาสุรสิงหนาท จ.ระยอง (เริ่ม 19 เมษายน 60)',
 }
 
+const entries = Object.entries(stations)
+
 module.exports = stations
