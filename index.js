@@ -21,8 +21,7 @@ let influx
 const log = (...args) => bar.interrupt(...args)
 
 const insertDbDelayMs = 25
-const startDate = process.env.START_DATE || '2018-04-20'
-const endDate = process.env.END_DATE || '2018-12-31'
+let startYear, endYear
 
 const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remaining: :etas', {
   complete: '=',
@@ -34,6 +33,13 @@ const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remain
 showFiglet()
 
 const promptLogin = () => {
+  const currentYear = moment().year()
+  let selectedEndYear = currentYear
+  let years = []
+  for (let i = 0; i <= currentYear - 2010; i++) {
+    years.push(`${currentYear - i}`)
+  }
+  years.push(new inquirer.Separator())
   const questions = [
     {
       name: 'influxHost',
@@ -122,15 +128,48 @@ const promptLogin = () => {
       type: 'input',
       default: influxDbMeasurement,
       message: 'Enter your InfluxDB measurement:',
-      validate: function (value) {
+      validate: value => {
         if (value.length) {
           influxDbMeasurement = value
           configStore.set(Constants.INFLUX_DB_MEASUREMENT, influxDbMeasurement)
           return true
         } else {
-          return 'Please enter your influxdb measurement.'
+          return 'Please enter your influxdb measurement name.'
         }
       }
+    },
+    {
+      name: 'endyear',
+      default: currentYear,
+      type: 'input',
+      validate: (endyear) => {
+        const endYear = parseInt(endyear, 10)
+        if (endYear <= currentYear && endYear >= 2010) {
+          selectedEndYear = endYear
+          years = years.filter(val => val < endYear)
+          return true
+        }
+        else {
+          return 'enter a valid sensor data date from 2010 until now, try again:'
+        }
+      },
+      message: 'Enter the start-year:',
+    },
+    {
+      name: 'startyear',
+      type: 'input',
+      message: 'Enter the end-year:',
+      default: selectedEndYear,
+      validate: (startyear) => {
+        const startYear = parseInt(startyear, 10)
+        if (startYear <= selectedEndYear && startYear >= 2010) {
+
+          return true
+        }
+        else {
+          return `enter a valid sensor data date from 2010 until ${selectedEndYear}.`
+        }
+      },
     },
   ]
   return inquirer.prompt(questions)
@@ -144,6 +183,9 @@ const login = () => {
       password: influxPassword,
       database: influxDbName
     })
+
+    let endDate = process.env.START_DATE || `${answers.endyear}-12-31`
+    let startDate = process.env.END_DATE || `${answers.startyear}-01-01`
 
     influx.getDatabaseNames()
       .then(names => {
@@ -190,18 +232,26 @@ login()
 
 const showStationsCheckbox = () => {
   const qText = 'choose stations'
-  let questions = [
-    {
-      name: qText,
-      message: 'Select aqmthai.com\'s station.',
-      type: 'checkbox',
-      defaultChecked: true,
-      paginated: false,
-      pageSize: 10,
-      choices: Object.entries(stations).map(([value, name]) => { return {value, name, checked: false}}),
-      validate: val => val.length !== 0
-    }]
-  return inquirer.prompt(questions).then(answers => answers[qText])
+  let questions = [{
+    name: qText,
+    message: 'Select aqmthai.com\'s station.',
+    type: 'checkbox',
+    defaultChecked: true,
+    paginated: false,
+    pageSize: 10,
+    choices: [...Object.entries(stations).map(([value, name]) => {
+      return {
+        value,
+        name,
+        checked: false
+      }
+    }), new inquirer.Separator()],
+    validate: val => val.length !== 0
+  }]
+  return inquirer.prompt(questions).then(answers => {
+    console.log(answers)
+    return answers[qText]
+  })
 }
 
 let params = {
