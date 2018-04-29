@@ -38,6 +38,7 @@ const showFiglet = () => {
   })
 
   console.log(chalk.magenta(t1))
+  console.log(`v${pkg.version}`)
   // console.log(chalk.green(t2))
 
 }

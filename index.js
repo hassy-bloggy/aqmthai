@@ -14,7 +14,78 @@ const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remain
   total: 100
 })
 
+let influxHost = process.env.INFLUX_HOST
+let influxPort = process.env.INFLUX_PORT || 8086
+let influxUsername = process.env.INFLUX_USERNAME
+let influxPassword = process.env.INFLUX_PASSWORD
+let influxDbName = process.env.INFUX_DBNAME
+
 showFiglet()
+
+const promptLogin = () => {
+  const questions = [
+    {
+      name: 'influxHost',
+      type: 'input',
+      // default: configStore.get(Constants.CONF_USERNAME),
+      default: influxHost,
+      message: 'Enter your InfluxDB host:',
+      validate: function (value) {
+        if (value.length) {
+          // configStore.set(Constants.CONF_USERNAME, value)
+          return true
+        } else {
+          return 'Please enter your username or e-mail address'
+        }
+      }
+    },
+    {
+      name: 'influxPassword',
+      type: 'password',
+      mask: '*',
+      default: influxPassword.split('').map(c => '*').join(''),
+      message: 'Enter your InfluxDB password:',
+      validate: function (value) {
+        const marked = influxPassword.split('').map(c => '*').join('')
+        if (value.length) {
+          if (value === marked) {
+            // do nothing
+          } else {
+            influxPassword = value
+          }
+          // Utils.set(Constants.CONF_PASSWORD, value)
+          return true
+        } else {
+          return 'Please enter your password'
+        }
+      }
+    }
+  ]
+  return inquirer.prompt(questions)
+}
+
+const login = () => {
+  promptLogin().then(answers => {
+    console.log('done login', JSON.stringify(answers, null, '  '))
+    influx = new Influx.InfluxDB({
+      hosts: [{host: influxHost, port: influxPort}],
+      username: influxUsername,
+      password: influxPassword,
+      database: influxDbName
+    })
+    influx.getMeasurements().then(names => {
+      console.log('My measurement names are: ' + names.join(', '))
+      showStationsCheckbox().then(answers => {
+        console.log(JSON.stringify(answers, null, '  '))
+      })
+    }).catch(ex => {
+      console.log(ex.toString())
+      login()
+    })
+  })
+}
+
+login()
 
 const showStationsCheckbox = () => {
   let questions = [
@@ -39,29 +110,8 @@ const log = (...args) => bar.interrupt(...args)
 const insertDbDelayMs = 100
 const startDate = process.env.START_DATE || '2018-04-20'
 const endDate = process.env.END_DATE || '2018-12-31'
-
-const influxHost = process.env.INFLUX_HOST
-const influxPort = process.env.INFLUX_PORT || 8086
-const influxUsername = process.env.INFLUX_USERNAME
-const influxPassword = process.env.INFLUX_PASSWORD
-const influxDbName = process.env.INFUX_DBNAME
 const Influx = require('influx')
-const influx = new Influx.InfluxDB({
-  hosts: [{host: influxHost, port: influxPort}],
-  username: influxUsername,
-  database: influxDbName
-})
-
-influx.getMeasurements()
-  .then(names => {
-    console.log('My measurement names are: ' + names.join(', '))
-    showStationsCheckbox().then(answers => {
-      console.log(JSON.stringify(answers, null, '  '))
-    })
-  })
-  .catch(ex => {
-    console.log(ex.toString())
-  })
+let influx
 
 // console.log(`START DATE = ${startDate}`)
 // console.log(`  END DATE = ${endDate}`)
