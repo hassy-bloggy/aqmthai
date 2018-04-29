@@ -1,6 +1,6 @@
 {
   "name": "aqmthai.js",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "a non-official aqmthai.com's public report to influxdb importer.",
   "main": "index.js",
   "bin": {

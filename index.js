@@ -67,6 +67,21 @@ const promptLogin = () => {
       }
     },
     {
+      name: 'influxDbName',
+      type: 'input',
+      default: influxDbName,
+      message: 'Enter your InfluxDB database name:',
+      validate: function (value) {
+        if (value.length) {
+          influxDbName = value
+          configStore.set(Constants.INFLUX_DB_NAME, influxDbName)
+          return true
+        } else {
+          return 'Please enter your influxDB database name.'
+        }
+      }
+    },
+    {
       name: 'influxUsername',
       type: 'input',
       default: influxUsername,
@@ -130,34 +145,39 @@ const login = () => {
       database: influxDbName
     })
 
-    influx.getMeasurements().then(names => {
-      console.log('My measurement names are: ' + names.join(', '))
-      configStore.set(Constants.INFLUX_DB_NAME, answers.influxDbName)
-      showStationsCheckbox().then(selectedStations => {
-        const promises = selectedStations.map(stationId => {
-          return () => new Promise((resolve, reject) => {
-            const stationName = stations[stationId]
-            Object.assign(params, {stationId, endDate, startDate, stationName})
-            const _resolve = (items) => {
-              insertDbDispatcher.add(items)
-              log(`${sct}/${selectedStations.length} received more ${items.length} items from ${stationName}`)
-              resolve(items)
-            }
-            log(`start fetching ${++sct}...`)
-            get(params).then(_resolve).catch(reject)
+    influx.getDatabaseNames()
+      .then(names => {
+        console.log(names, '>>', influxDbName)
+        if (names.includes(influxDbName)) {
+          showStationsCheckbox().then(selectedStations => {
+            const promises = selectedStations.map(stationId => {
+              return () => new Promise((resolve, reject) => {
+                const stationName = stations[stationId]
+                Object.assign(params, {stationId, endDate, startDate, stationName})
+                const _resolve = (items) => {
+                  insertDbDispatcher.add(items)
+                  log(`${sct}/${selectedStations.length} received more ${items.length} items from ${stationName}`)
+                  resolve(items)
+                }
+                log(`start fetching ${++sct}...`)
+                get(params).then(_resolve).catch(reject)
+              })
+            })
+            insertDbDispatcher.run()
+            sequential(promises)
+              .then(res => {
+                log('all requests done.')
+              })
+              .catch(err => {
+                log(`request error = err`)
+              })
           })
-        })
-
-        insertDbDispatcher.run()
-        sequential(promises)
-          .then(res => {
-            log('all requests done.')
-          })
-          .catch(err => {
-            log(`request error = err`)
-          })
-      })
-    }).catch(ex => {
+        }
+        else {
+          console.log(`invalid database name.`)
+          login()
+        }
+      }).catch(ex => {
       console.log(ex.toString())
       login()
     })

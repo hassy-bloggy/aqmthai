@@ -32,7 +32,7 @@ const createDispatcher = (bucket, intervalTimeMs, {pass, fn}) => {
 const showFiglet = () => {
   clear()
   let t1 = figlet.textSync(`${pkg.name}.js`, {
-    font: 'fuzzy',
+    font: 'Fuzzy',
     horizontalLayout: 'full',
     verticalLayout: 'fitted'
   })
