@@ -6,19 +6,29 @@ const stations = require('./stationsDb')
 const ProgressBar = require('progress')
 const {createDispatcher, showFiglet, configStore} = require('./utils')
 const sequential = require('promise-sequential')
+const Influx = require('influx')
 const inquirer = require('inquirer')
-const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remaining: :etas', {
-  complete: '=',
-  incomplete: ' ',
-  width: 20,
-  total: 100
-})
 
 let influxHost = process.env.INFLUX_HOST
 let influxPort = process.env.INFLUX_PORT || 8086
 let influxUsername = process.env.INFLUX_USERNAME
 let influxPassword = process.env.INFLUX_PASSWORD
 let influxDbName = process.env.INFUX_DBNAME
+let influxDbMeasurement = process.env.INFUX_MEASUREMENT || 'aqm'
+let influx
+
+const log = (...args) => bar.interrupt(...args)
+
+const insertDbDelayMs = 100
+const startDate = process.env.START_DATE || '2018-04-20'
+const endDate = process.env.END_DATE || '2018-12-31'
+
+const bar = new ProgressBar('  inserting :station (:a/:b) [:bar] :percent remaining: :etas', {
+  complete: '=',
+  incomplete: ' ',
+  width: 20,
+  total: 100
+})
 
 showFiglet()
 
@@ -36,6 +46,36 @@ const promptLogin = () => {
           return true
         } else {
           return 'Please enter your username or e-mail address'
+        }
+      }
+    },
+    {
+      name: 'influxPort',
+      type: 'number',
+      default: influxPort,
+      message: 'Enter your InfluxDB port:',
+      validate: function (value) {
+        const input = parseInt(value, 10)
+        if (!isNaN(input)) {
+          // Utils.set(Constants.CONF_PASSWORD, value)
+          return true
+        } else {
+          return 'Please the valid port number.'
+        }
+      }
+    },
+    {
+      name: 'influxUsername',
+      type: 'input',
+      // default: configStore.get(Constants.CONF_USERNAME),
+      default: influxUsername,
+      message: 'Enter your InfluxDB username:',
+      validate: function (value) {
+        if (value.length) {
+          // configStore.set(Constants.CONF_USERNAME, value)
+          return true
+        } else {
+          return 'Please enter your influxDB username.'
         }
       }
     },
@@ -59,7 +99,21 @@ const promptLogin = () => {
           return 'Please enter your password'
         }
       }
-    }
+    },
+    {
+      name: 'influxMeasurement',
+      type: 'input',
+      // default: configStore.get(Constants.CONF_USERNAME),
+      default: influxDbMeasurement,
+      message: 'Enter your InfluxDB measurement:',
+      validate: function (value) {
+        if (value.length) {
+          return true
+        } else {
+          return 'Please enter your influxdb measurement.'
+        }
+      }
+    },
   ]
   return inquirer.prompt(questions)
 }
@@ -104,14 +158,6 @@ const showStationsCheckbox = () => {
     }]
   return inquirer.prompt(questions)
 }
-
-const log = (...args) => bar.interrupt(...args)
-
-const insertDbDelayMs = 100
-const startDate = process.env.START_DATE || '2018-04-20'
-const endDate = process.env.END_DATE || '2018-12-31'
-const Influx = require('influx')
-let influx
 
 // console.log(`START DATE = ${startDate}`)
 // console.log(`  END DATE = ${endDate}`)
@@ -185,7 +231,7 @@ const insertDbDispatcher = createDispatcher(bucket, insertDbDelayMs, {
     const point = Object.assign({}, row.data)
     const {stationId, stationName, time} = row.extra
     influx.writePoints([{
-      measurement: 'aqm', tags: {stationId: stationName},
+      measurement: influxDbMeasurement, tags: {stationId: stationName},
       fields: point,
       timestamp: time,
     }], {
