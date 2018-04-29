@@ -249,7 +249,6 @@ const showStationsCheckbox = () => {
     validate: val => val.length !== 0
   }]
   return inquirer.prompt(questions).then(answers => {
-    console.log(answers)
     return answers[qText]
   })
 }
