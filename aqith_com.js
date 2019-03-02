@@ -3,9 +3,9 @@ let fetch = require('node-fetch')
 let moment = require('moment-timezone')
 const Influx = require('influx')
 const influx = new Influx.InfluxDB({
-  hosts: [{host: 'dustboy.laris.co', port: 8086}],
-  username: 'nat',
-  password: 'nattan',
+  hosts: [{host: 'x.x.co', port: 8086}],
+  username: 'x',
+  password: 'x',
   database: 'aqithaidb'
 })
 
