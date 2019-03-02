@@ -1,0 +1,1 @@
+# aqmthai.js
